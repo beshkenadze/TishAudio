@@ -39,4 +39,4 @@ GPL-3.0 (inherited from BlackHole)
 ## Credits
 
 - [BlackHole](https://github.com/ExistentialAudio/BlackHole) by Existential Audio
-- [Tish](https://github.com/AkiKurisu/Tish) noise cancellation app
+- [Tish](https://github.com/beshkenadze/Tish) noise cancellation app
