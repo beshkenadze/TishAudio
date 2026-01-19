@@ -901,22 +901,46 @@ Done:
 
 static OSStatus	BlackHole_AddDeviceClient(AudioServerPlugInDriverRef inDriver, AudioObjectID inDeviceObjectID, const AudioServerPlugInClientInfo* inClientInfo)
 {
-	//	This method is used to inform the driver about a new client that is using the given device.
-	//	This allows the device to act differently depending on who the client is. This driver does
-	//	not need to track the clients using the device, so we just check the arguments and return
-	//	successfully.
-	
-	#pragma unused(inClientInfo)
-	
-	//	declare the local variables
-	OSStatus theAnswer = 0;
-	
-	//	check the arguments
-	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_AddDeviceClient: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device && inDeviceObjectID != kObjectID_Device2, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_AddDeviceClient: bad device ID");
+    //  This method is called when a new client connects to the device.
+    //  We track clients to know which apps are using our virtual mic.
+    
+    OSStatus theAnswer = 0;
+    
+    //  check the arguments
+    FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_AddDeviceClient: bad driver reference");
+    FailWithAction(inDeviceObjectID != kObjectID_Device && inDeviceObjectID != kObjectID_Device2, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_AddDeviceClient: bad device ID");
+    FailWithAction(inClientInfo == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "BlackHole_AddDeviceClient: no client info");
+    
+    //  add client to tracking list
+    pthread_mutex_lock(&gClientsMutex);
+    
+    if (gClientCount < kMaxClients) {
+        TishClientInfo* client = &gClients[gClientCount];
+        client->clientID = inClientInfo->mClientID;
+        client->processID = inClientInfo->mProcessID;
+        client->isDoingIO = false;
+        
+        //  copy bundle ID if available
+        if (inClientInfo->mBundleID != NULL) {
+            CFStringGetCString(inClientInfo->mBundleID, client->bundleID, sizeof(client->bundleID), kCFStringEncodingUTF8);
+            client->isTishApp = IsTishApp(client->bundleID);
+        } else {
+            client->bundleID[0] = '\0';
+            client->isTishApp = false;
+        }
+        
+        gClientCount++;
+        
+        DebugMsg("BlackHole_AddDeviceClient: added client %u (pid=%d, bundle=%s, isTish=%d)", 
+                 client->clientID, client->processID, client->bundleID, client->isTishApp);
+    } else {
+        DebugMsg("BlackHole_AddDeviceClient: client list full, ignoring client %u", inClientInfo->mClientID);
+    }
+    
+    pthread_mutex_unlock(&gClientsMutex);
 
 Done:
-	return theAnswer;
+    return theAnswer;
 }
 
 static OSStatus	BlackHole_RemoveDeviceClient(AudioServerPlugInDriverRef inDriver, AudioObjectID inDeviceObjectID, const AudioServerPlugInClientInfo* inClientInfo)
