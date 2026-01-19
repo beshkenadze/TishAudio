@@ -4425,33 +4425,41 @@ Done:
 
 static OSStatus	BlackHole_StartIO(AudioServerPlugInDriverRef inDriver, AudioObjectID inDeviceObjectID, UInt32 inClientID)
 {
-	//	This call tells the device that IO is starting for the given client. When this routine
-	//	returns, the device's clock is running and it is ready to have data read/written. It is
-	//	important to note that multiple clients can have IO running on the device at the same time.
-	//	So, work only needs to be done when the first client starts. All subsequent starts simply
-	//	increment the counter.
+    //  This call tells the device that IO is starting for the given client.
     
-    DebugMsg("BlackHole_StartIO");
-	
-	#pragma unused(inClientID, inDeviceObjectID)
-	
-	//	declare the local variables
-	OSStatus theAnswer = 0;
-	
-	//	check the arguments
-	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_StartIO: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device && inDeviceObjectID != kObjectID_Device2, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_StartIO: bad device ID");
+    DebugMsg("BlackHole_StartIO: client %u", inClientID);
+    
+    OSStatus theAnswer = 0;
+    Boolean shouldNotify = false;
+    UInt32 previousOtherCount = 0;
+    
+    //  check the arguments
+    FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_StartIO: bad driver reference");
+    FailWithAction(inDeviceObjectID != kObjectID_Device && inDeviceObjectID != kObjectID_Device2, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_StartIO: bad device ID");
     FailWithAction(inDeviceObjectID == kObjectID_Device && gDevice_IOIsRunning == UINT64_MAX, theAnswer = kAudioHardwareIllegalOperationError, Done, "BlackHole_StartIO: overflow error.");
     FailWithAction(inDeviceObjectID == kObjectID_Device2 && gDevice2_IOIsRunning == UINT64_MAX, theAnswer = kAudioHardwareIllegalOperationError, Done, "BlackHole_StartIO: overflow error.");
 
-	//	we need to hold the state lock
-	pthread_mutex_lock(&gPlugIn_StateMutex);
-	
+    //  update client I/O state
+    pthread_mutex_lock(&gClientsMutex);
+    previousOtherCount = CountOtherClientsDoingIO();
+    
+    SInt32 index = FindClientByID(inClientID);
+    if (index >= 0) {
+        gClients[index].isDoingIO = true;
+        DebugMsg("BlackHole_StartIO: client %u started IO (isTish=%d)", inClientID, gClients[index].isTishApp);
+    }
+    
+    UInt32 newOtherCount = CountOtherClientsDoingIO();
+    shouldNotify = (previousOtherCount == 0 && newOtherCount > 0);
+    pthread_mutex_unlock(&gClientsMutex);
+
+    //  update device IO state
+    pthread_mutex_lock(&gPlugIn_StateMutex);
     
     if (inDeviceObjectID == kObjectID_Device) { gDevice_IOIsRunning += 1; }
     if (inDeviceObjectID == kObjectID_Device2) { gDevice2_IOIsRunning += 1; }
     
-    // allocate ring buffer
+    //  allocate ring buffer
     if ((gDevice_IOIsRunning || gDevice2_IOIsRunning) && gRingBuffer == NULL)
     {
         gDevice_NumberTimeStamps = 0;
@@ -4461,12 +4469,20 @@ static OSStatus	BlackHole_StartIO(AudioServerPlugInDriverRef inDriver, AudioObje
         gRingBuffer = calloc(kRing_Buffer_Frame_Size * kNumber_Of_Channels, sizeof(Float32));
     }
     
+    pthread_mutex_unlock(&gPlugIn_StateMutex);
     
-	//	unlock the state lock
-	pthread_mutex_unlock(&gPlugIn_StateMutex);
-	
+    //  notify property change if "other clients doing IO" state changed
+    if (shouldNotify && gPlugIn_Host != NULL) {
+        AudioObjectPropertyAddress address = {
+            kTishDevicePropertyOtherClientsDoingIO,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain
+        };
+        gPlugIn_Host->PropertiesChanged(gPlugIn_Host, inDeviceObjectID, 1, &address);
+    }
+    
 Done:
-	return theAnswer;
+    return theAnswer;
 }
 
 static OSStatus	BlackHole_StopIO(AudioServerPlugInDriverRef inDriver, AudioObjectID inDeviceObjectID, UInt32 inClientID)
