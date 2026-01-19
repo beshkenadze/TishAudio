@@ -1,0 +1,67 @@
+version: '3'
+
+dotenv: ['../.env', '.env']
+
+vars:
+  SCHEME: 'TishAudio'
+  CONFIGURATION: 'Release'
+  DRIVER_INSTALL_PATH: '/Library/Audio/Plug-Ins/HAL'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  generate:
+    desc: Generate Xcode project with Tuist
+    cmds:
+      - tuist generate
+    sources:
+      - Project.swift
+
+  build:
+    desc: Build the driver (Release)
+    deps: [generate]
+    cmds:
+      - xcodebuild -scheme {{.SCHEME}} -configuration {{.CONFIGURATION}} build
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - xcodebuild clean -scheme {{.SCHEME}} 2>/dev/null || true
+      - rm -rf ~/Library/Developer/Xcode/DerivedData/TishAudio-*
+      - tuist clean
+
+  install:
+    desc: Install driver to system (requires sudo)
+    deps: [build]
+    cmds:
+      - |
+        DRIVER_PATH=$(find ~/Library/Developer/Xcode/DerivedData/TishAudio-*/Build/Products/Release -name "TishAudio.driver" -type d | head -1)
+        if [ -z "$DRIVER_PATH" ]; then
+          echo "Driver not found. Run 'task build' first."
+          exit 1
+        fi
+        echo "Installing from: $DRIVER_PATH"
+        sudo cp -R "$DRIVER_PATH" {{.DRIVER_INSTALL_PATH}}/
+        sudo killall -9 coreaudiod
+        echo "TishAudio driver installed and CoreAudio restarted"
+
+  uninstall:
+    desc: Uninstall driver from system (requires sudo)
+    cmds:
+      - sudo rm -rf {{.DRIVER_INSTALL_PATH}}/TishAudio.driver
+      - sudo killall -9 coreaudiod
+      - echo "TishAudio driver uninstalled"
+
+  status:
+    desc: Check if TishAudio driver is installed
+    cmds:
+      - |
+        if [ -d "{{.DRIVER_INSTALL_PATH}}/TishAudio.driver" ]; then
+          echo "TishAudio: INSTALLED"
+          ls -la {{.DRIVER_INSTALL_PATH}}/TishAudio.driver
+        else
+          echo "TishAudio: NOT INSTALLED"
+        fi

@@ -36,12 +36,12 @@ enum {
 //==================================================================================================
 
 // Bundle ID of the TishAudio driver
-#define kTishAudioDriverBundleID "audio.existential.BlackHole2ch"
+#define kTishAudioDriverBundleID "app.beshkenadze.driver.TishAudio"
 
 // Bundle ID of the Tish companion app (used to exclude from "other clients" detection)
-#define kTishAppBundleID "com.beshkenadze.Tish"
+#define kTishAppBundleID "app.beshkenadze.tish"
 
 // Device UID for TishAudio virtual device
-#define kTishAudioDeviceUID "BlackHole2ch_UID"
+#define kTishAudioDeviceUID "TishAudio_UID"
 
 #endif /* TishAudioTypes_h */

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1340"
+   LastUpgradeVersion = "1010"
    version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -14,10 +14,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "3D89663D2849C318002AB3F0"
-               BuildableName = "BlackHole.driver"
-               BlueprintName = "BlackHole"
-               ReferencedContainer = "container:BlackHole.xcodeproj">
+               BlueprintIdentifier = "BE9E8820C20DEF892BCEF7EC"
+               BuildableName = "TishAudio.driver"
+               BlueprintName = "TishAudio"
+               ReferencedContainer = "container:TishAudio.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -26,7 +26,8 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES">
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      disableMainThreadChecker = "YES">
       <Testables>
       </Testables>
    </TestAction>
@@ -40,6 +41,15 @@
       debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "BE9E8820C20DEF892BCEF7EC"
+            BuildableName = "TishAudio.driver"
+            BlueprintName = "TishAudio"
+            ReferencedContainer = "container:TishAudio.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -50,10 +60,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "3D89663D2849C318002AB3F0"
-            BuildableName = "BlackHole.driver"
-            BlueprintName = "BlackHole"
-            ReferencedContainer = "container:BlackHole.xcodeproj">
+            BlueprintIdentifier = "BE9E8820C20DEF892BCEF7EC"
+            BuildableName = "TishAudio.driver"
+            BlueprintName = "TishAudio"
+            ReferencedContainer = "container:TishAudio.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
    </ProfileAction>
