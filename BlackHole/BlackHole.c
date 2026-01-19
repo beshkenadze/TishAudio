@@ -2466,6 +2466,14 @@ static OSStatus	BlackHole_GetDevicePropertyDataSize(AudioServerPlugInDriverRef i
 			*outDataSize = sizeof(UInt32);
 			break;
 
+		case kTishDevicePropertyOtherClientsDoingIO:
+			*outDataSize = sizeof(UInt32);
+			break;
+			
+		case kTishDevicePropertyOtherClientsIOCount:
+			*outDataSize = sizeof(UInt32);
+			break;
+
 		case kAudioDevicePropertyDeviceCanBeDefaultDevice:
 			*outDataSize = sizeof(UInt32);
 			break;
