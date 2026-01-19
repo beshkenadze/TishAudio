@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include <sys/syslog.h>
 #include <Accelerate/Accelerate.h>
+#include <string.h>
 #include <Availability.h>
 
 //==================================================================================================
@@ -307,6 +308,54 @@ static UInt32                       kClockSource_NumberItems            = 2;
 #define                             kClockSource_InternalAdjustable    "Internal Adjustable"
 static UInt32                       gClockSource_Value                  = 0;
 static bool                         gPitch_Adjust_Enabled               = false;
+
+//==================================================================================================
+#pragma mark -
+#pragma mark Client Tracking State
+//==================================================================================================
+
+// Maximum number of clients we track (should be plenty for any normal use)
+#define kMaxClients 64
+
+// Client info structure - tracks a single connected client
+typedef struct {
+    UInt32      clientID;       // Unique client ID from HAL
+    pid_t       processID;      // Process ID of client app
+    char        bundleID[256];  // Bundle ID (e.g., "us.zoom.xos")
+    Boolean     isDoingIO;      // True if client is currently doing I/O
+    Boolean     isTishApp;      // True if this is the Tish companion app
+} TishClientInfo;
+
+// Global client tracking state
+static TishClientInfo   gClients[kMaxClients];
+static UInt32           gClientCount = 0;
+static pthread_mutex_t  gClientsMutex = PTHREAD_MUTEX_INITIALIZER;
+
+// Helper: Check if bundle ID matches Tish app
+static Boolean IsTishApp(const char* bundleID) {
+    return bundleID != NULL && strcmp(bundleID, kTishAppBundleID) == 0;
+}
+
+// Helper: Find client by ID, returns index or -1 if not found
+static SInt32 FindClientByID(UInt32 clientID) {
+    for (UInt32 i = 0; i < gClientCount; i++) {
+        if (gClients[i].clientID == clientID) {
+            return (SInt32)i;
+        }
+    }
+    return -1;
+}
+
+// Helper: Count clients doing I/O (excluding Tish)
+static UInt32 CountOtherClientsDoingIO(void) {
+    UInt32 count = 0;
+    for (UInt32 i = 0; i < gClientCount; i++) {
+        if (gClients[i].isDoingIO && !gClients[i].isTishApp) {
+            count++;
+        }
+    }
+    return count;
+}
 
 static struct ObjectInfo            kDevice_ObjectList[]                = {
 #if kDevice_HasInput
