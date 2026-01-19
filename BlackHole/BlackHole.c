@@ -945,21 +945,51 @@ Done:
 
 static OSStatus	BlackHole_RemoveDeviceClient(AudioServerPlugInDriverRef inDriver, AudioObjectID inDeviceObjectID, const AudioServerPlugInClientInfo* inClientInfo)
 {
-	//	This method is used to inform the driver about a client that is no longer using the given
-	//	device. This driver does not track clients, so we just check the arguments and return
-	//	successfully.
-	
-	#pragma unused(inClientInfo)
-	
-	//	declare the local variables
-	OSStatus theAnswer = 0;
-	
-	//	check the arguments
-	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_RemoveDeviceClient: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device && inDeviceObjectID != kObjectID_Device2, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_RemoveDeviceClient: bad device ID");
+    //  This method is called when a client disconnects from the device.
+    //  We remove it from our tracking list.
+    
+    OSStatus theAnswer = 0;
+    Boolean shouldNotify = false;
+    
+    //  check the arguments
+    FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_RemoveDeviceClient: bad driver reference");
+    FailWithAction(inDeviceObjectID != kObjectID_Device && inDeviceObjectID != kObjectID_Device2, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_RemoveDeviceClient: bad device ID");
+    FailWithAction(inClientInfo == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "BlackHole_RemoveDeviceClient: no client info");
+    
+    //  remove client from tracking list
+    pthread_mutex_lock(&gClientsMutex);
+    
+    SInt32 index = FindClientByID(inClientInfo->mClientID);
+    if (index >= 0) {
+        TishClientInfo* client = &gClients[index];
+        
+        //  check if we need to notify (non-Tish client was doing IO)
+        shouldNotify = client->isDoingIO && !client->isTishApp;
+        
+        DebugMsg("BlackHole_RemoveDeviceClient: removing client %u (pid=%d, bundle=%s)", 
+                 client->clientID, client->processID, client->bundleID);
+        
+        //  shift remaining clients down
+        for (UInt32 i = (UInt32)index; i < gClientCount - 1; i++) {
+            gClients[i] = gClients[i + 1];
+        }
+        gClientCount--;
+    }
+    
+    pthread_mutex_unlock(&gClientsMutex);
+    
+    //  notify property change if needed
+    if (shouldNotify && gPlugIn_Host != NULL) {
+        AudioObjectPropertyAddress address = {
+            kTishDevicePropertyOtherClientsDoingIO,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain
+        };
+        gPlugIn_Host->PropertiesChanged(gPlugIn_Host, inDeviceObjectID, 1, &address);
+    }
 
 Done:
-	return theAnswer;
+    return theAnswer;
 }
 
 static OSStatus	BlackHole_PerformDeviceConfigurationChange(AudioServerPlugInDriverRef inDriver, AudioObjectID inDeviceObjectID, UInt64 inChangeAction, void* inChangeInfo)
