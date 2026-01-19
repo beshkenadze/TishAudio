@@ -2313,6 +2313,8 @@ static Boolean	BlackHole_HasDeviceProperty(AudioServerPlugInDriverRef inDriver, 
 		case kAudioDevicePropertyZeroTimeStampPeriod:
 		case kAudioDevicePropertyIcon:
 		case kAudioDevicePropertyStreams:
+		case kTishDevicePropertyOtherClientsDoingIO:
+		case kTishDevicePropertyOtherClientsIOCount:
 			theAnswer = true;
 			break;
 			
