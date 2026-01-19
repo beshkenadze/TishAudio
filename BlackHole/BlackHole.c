@@ -2761,6 +2761,27 @@ static OSStatus	BlackHole_GetDevicePropertyData(AudioServerPlugInDriverRef inDri
             *outDataSize = sizeof(UInt32);
             break;
 
+        case kTishDevicePropertyOtherClientsDoingIO:
+            {
+                FailWithAction(inDataSize < sizeof(UInt32), theAnswer = kAudioHardwareBadPropertySizeError, Done, "BlackHole_GetDevicePropertyData: not enough space for kTishDevicePropertyOtherClientsDoingIO");
+                pthread_mutex_lock(&gClientsMutex);
+                UInt32 otherCount = CountOtherClientsDoingIO();
+                pthread_mutex_unlock(&gClientsMutex);
+                *((UInt32*)outData) = otherCount > 0 ? 1 : 0;
+                *outDataSize = sizeof(UInt32);
+            }
+            break;
+            
+        case kTishDevicePropertyOtherClientsIOCount:
+            {
+                FailWithAction(inDataSize < sizeof(UInt32), theAnswer = kAudioHardwareBadPropertySizeError, Done, "BlackHole_GetDevicePropertyData: not enough space for kTishDevicePropertyOtherClientsIOCount");
+                pthread_mutex_lock(&gClientsMutex);
+                *((UInt32*)outData) = CountOtherClientsDoingIO();
+                pthread_mutex_unlock(&gClientsMutex);
+                *outDataSize = sizeof(UInt32);
+            }
+            break;
+
 		case kAudioDevicePropertyDeviceCanBeDefaultDevice:
 			//	This property returns whether or not the device wants to be able to be the
 			//	default device for content. This is the device that iTunes and QuickTime
