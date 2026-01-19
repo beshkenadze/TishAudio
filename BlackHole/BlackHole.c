@@ -130,6 +130,25 @@ enum
     ChangeAction_DisablePitchControl    = 3,
 };
 
+//==================================================================================================
+#pragma mark -
+#pragma mark TishAudio Custom Properties
+//==================================================================================================
+
+// Custom property selectors for TishAudio client tracking
+enum
+{
+    // CFBoolean: True if any client OTHER than Tish app is doing I/O
+    // Use this to detect when conferencing apps start/stop using the mic
+    kTishDevicePropertyOtherClientsDoingIO = 'toci',
+    
+    // CFNumber (UInt32): Count of clients currently doing I/O (excluding Tish)
+    kTishDevicePropertyOtherClientsIOCount = 'tocc',
+};
+
+// Tish app bundle ID - used to exclude from "other clients" detection
+#define kTishAppBundleID "com.beshkenadze.Tish"
+
 enum ObjectType
 {
     kObjectType_Stream,
