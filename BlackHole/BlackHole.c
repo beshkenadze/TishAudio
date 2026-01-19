@@ -4487,39 +4487,61 @@ Done:
 
 static OSStatus	BlackHole_StopIO(AudioServerPlugInDriverRef inDriver, AudioObjectID inDeviceObjectID, UInt32 inClientID)
 {
-	//	This call tells the device that the client has stopped IO. The driver can stop the hardware
-	//	once all clients have stopped.
-	
-	#pragma unused(inClientID, inDeviceObjectID)
-	
-	//	declare the local variables
-	OSStatus theAnswer = 0;
-	
-	//	check the arguments
-	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_StopIO: bad driver reference");
-	FailWithAction(inDeviceObjectID != kObjectID_Device && inDeviceObjectID != kObjectID_Device2, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_StopIO: bad device ID");
-    FailWithAction(inDeviceObjectID == kObjectID_Device && gDevice_IOIsRunning == 0, theAnswer = kAudioHardwareIllegalOperationError, Done, "BlackHole_StartIO: underflow error.");
-    FailWithAction(inDeviceObjectID == kObjectID_Device2 && gDevice2_IOIsRunning == 0, theAnswer = kAudioHardwareIllegalOperationError, Done, "BlackHole_StartIO: underflow error.");
+    //  This call tells the device that the client has stopped IO.
+    
+    DebugMsg("BlackHole_StopIO: client %u", inClientID);
+    
+    OSStatus theAnswer = 0;
+    Boolean shouldNotify = false;
+    UInt32 previousOtherCount = 0;
+    
+    //  check the arguments
+    FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_StopIO: bad driver reference");
+    FailWithAction(inDeviceObjectID != kObjectID_Device && inDeviceObjectID != kObjectID_Device2, theAnswer = kAudioHardwareBadObjectError, Done, "BlackHole_StopIO: bad device ID");
+    FailWithAction(inDeviceObjectID == kObjectID_Device && gDevice_IOIsRunning == 0, theAnswer = kAudioHardwareIllegalOperationError, Done, "BlackHole_StopIO: underflow error.");
+    FailWithAction(inDeviceObjectID == kObjectID_Device2 && gDevice2_IOIsRunning == 0, theAnswer = kAudioHardwareIllegalOperationError, Done, "BlackHole_StopIO: underflow error.");
 
-	//	we need to hold the state lock
-	pthread_mutex_lock(&gPlugIn_StateMutex);
-	
+    //  update client I/O state
+    pthread_mutex_lock(&gClientsMutex);
+    previousOtherCount = CountOtherClientsDoingIO();
+    
+    SInt32 index = FindClientByID(inClientID);
+    if (index >= 0) {
+        gClients[index].isDoingIO = false;
+        DebugMsg("BlackHole_StopIO: client %u stopped IO (isTish=%d)", inClientID, gClients[index].isTishApp);
+    }
+    
+    UInt32 newOtherCount = CountOtherClientsDoingIO();
+    shouldNotify = (previousOtherCount > 0 && newOtherCount == 0);
+    pthread_mutex_unlock(&gClientsMutex);
+
+    //  update device IO state
+    pthread_mutex_lock(&gPlugIn_StateMutex);
     
     if (inDeviceObjectID == kObjectID_Device) { gDevice_IOIsRunning -= 1; }
     if (inDeviceObjectID == kObjectID_Device2) { gDevice2_IOIsRunning -= 1; }
     
-    // free the ring buffer
+    //  free the ring buffer
     if (!gDevice_IOIsRunning && !gDevice2_IOIsRunning && gRingBuffer != NULL)
     {
         free(gRingBuffer);
         gRingBuffer = NULL;
     }
-	
-	//	unlock the state lock
-	pthread_mutex_unlock(&gPlugIn_StateMutex);
-	
+    
+    pthread_mutex_unlock(&gPlugIn_StateMutex);
+    
+    //  notify property change if "other clients doing IO" state changed
+    if (shouldNotify && gPlugIn_Host != NULL) {
+        AudioObjectPropertyAddress address = {
+            kTishDevicePropertyOtherClientsDoingIO,
+            kAudioObjectPropertyScopeGlobal,
+            kAudioObjectPropertyElementMain
+        };
+        gPlugIn_Host->PropertiesChanged(gPlugIn_Host, inDeviceObjectID, 1, &address);
+    }
+    
 Done:
-	return theAnswer;
+    return theAnswer;
 }
 
 static OSStatus	BlackHole_GetZeroTimeStamp(AudioServerPlugInDriverRef inDriver, AudioObjectID inDeviceObjectID, UInt32 inClientID, Float64* outSampleTime, UInt64* outHostTime, UInt64* outSeed)
