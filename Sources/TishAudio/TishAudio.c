@@ -169,11 +169,11 @@ struct ObjectInfo {
 #define                             kDevice_ModelUID                    kDriver_Name "_ModelUID"
 
 #ifndef kDevice_Name
-#define                             kDevice_Name                        "TishAudio"
+#define                             kDevice_Name                        "TishAudio Mic"
 #endif
 
 #ifndef kDevice2_Name
-#define                             kDevice2_Name                       "TishAudio Mirror"
+#define                             kDevice2_Name                       "TishAudio Speaker"
 #endif
 
 #ifndef kDevice_IsHidden
@@ -181,7 +181,7 @@ struct ObjectInfo {
 #endif
 
 #ifndef kDevice2_IsHidden
-#define                             kDevice2_IsHidden                   true
+#define                             kDevice2_IsHidden                   false
 #endif
 
 
@@ -359,7 +359,9 @@ static const UInt32                 kDevice_SampleRatesSize             = sizeof
 #define                             kBytes_Per_Channel                  (kBits_Per_Channel/ 8)
 #define                             kBytes_Per_Frame                    (kNumber_Of_Channels * kBytes_Per_Channel)
 #define                             kRing_Buffer_Frame_Size             ((65536 + kLatency_Frame_Size))
-static Float32*                     gRingBuffer = NULL;
+// Separate ring buffers for each device to isolate audio paths
+static Float32*                     gRingBuffer_Mic = NULL;     // Device 1: Tish writes processed audio → Meeting apps read
+static Float32*                     gRingBuffer_Speaker = NULL; // Device 2: Meeting apps write audio → Tish reads for processing
 
 
 //==================================================================================================
@@ -4434,17 +4436,53 @@ static OSStatus	TishAudio_StartIO(AudioServerPlugInDriverRef inDriver, AudioObje
     //  update device IO state
     pthread_mutex_lock(&gPlugIn_StateMutex);
     
+    //  Reset timing state only when transitioning from "no devices running" to "at least one running"
+    //  This prevents desynchronizing timestamps when a second device starts while first is active
+    Boolean wasIdle = (gDevice_IOIsRunning == 0 && gDevice2_IOIsRunning == 0);
+    
     if (inDeviceObjectID == kObjectID_Device) { gDevice_IOIsRunning += 1; }
     if (inDeviceObjectID == kObjectID_Device2) { gDevice2_IOIsRunning += 1; }
     
-    //  allocate ring buffer
-    if ((gDevice_IOIsRunning || gDevice2_IOIsRunning) && gRingBuffer == NULL)
+    if (wasIdle)
     {
         gDevice_NumberTimeStamps = 0;
         gDevice_AnchorSampleTime = 0;
         gDevice_AnchorHostTime = mach_absolute_time();
         gDevice_PreviousTicks = 0;
-        gRingBuffer = calloc(kRing_Buffer_Frame_Size * kNumber_Of_Channels, sizeof(Float32));
+    }
+    
+    // Allocate ring buffers once on first use (never freed to avoid use-after-free race in DoIOOperation)
+    // Both buffers are allocated together to ensure consistent state
+    if (gRingBuffer_Mic == NULL)
+    {
+        gRingBuffer_Mic = calloc(kRing_Buffer_Frame_Size * kNumber_Of_Channels, sizeof(Float32));
+        if (gRingBuffer_Mic == NULL)
+        {
+            DebugMsg("TishAudio_StartIO: failed to allocate gRingBuffer_Mic");
+            // Roll back the IOIsRunning increment
+            if (inDeviceObjectID == kObjectID_Device) { gDevice_IOIsRunning -= 1; }
+            if (inDeviceObjectID == kObjectID_Device2) { gDevice2_IOIsRunning -= 1; }
+            pthread_mutex_unlock(&gPlugIn_StateMutex);
+            theAnswer = kAudioHardwareUnspecifiedError;
+            goto Done;
+        }
+        DebugMsg("TishAudio_StartIO: allocated gRingBuffer_Mic");
+    }
+    
+    if (gRingBuffer_Speaker == NULL)
+    {
+        gRingBuffer_Speaker = calloc(kRing_Buffer_Frame_Size * kNumber_Of_Channels, sizeof(Float32));
+        if (gRingBuffer_Speaker == NULL)
+        {
+            DebugMsg("TishAudio_StartIO: failed to allocate gRingBuffer_Speaker");
+            // Roll back the IOIsRunning increment
+            if (inDeviceObjectID == kObjectID_Device) { gDevice_IOIsRunning -= 1; }
+            if (inDeviceObjectID == kObjectID_Device2) { gDevice2_IOIsRunning -= 1; }
+            pthread_mutex_unlock(&gPlugIn_StateMutex);
+            theAnswer = kAudioHardwareUnspecifiedError;
+            goto Done;
+        }
+        DebugMsg("TishAudio_StartIO: allocated gRingBuffer_Speaker");
     }
     
     pthread_mutex_unlock(&gPlugIn_StateMutex);
@@ -4499,12 +4537,9 @@ static OSStatus	TishAudio_StopIO(AudioServerPlugInDriverRef inDriver, AudioObjec
     if (inDeviceObjectID == kObjectID_Device) { gDevice_IOIsRunning -= 1; }
     if (inDeviceObjectID == kObjectID_Device2) { gDevice2_IOIsRunning -= 1; }
     
-    //  free the ring buffer
-    if (!gDevice_IOIsRunning && !gDevice2_IOIsRunning && gRingBuffer != NULL)
-    {
-        free(gRingBuffer);
-        gRingBuffer = NULL;
-    }
+    //  Note: Ring buffers are intentionally NOT freed here to prevent use-after-free race
+    //  condition in DoIOOperation. The buffers (~512KB each) remain allocated for the
+    //  lifetime of the driver. They are only allocated once on first StartIO call.
     
     pthread_mutex_unlock(&gPlugIn_StateMutex);
     
@@ -4679,60 +4714,72 @@ static OSStatus	TishAudio_DoIOOperation(AudioServerPlugInDriverRef inDriver, Aud
         secondPartFrameSize = inIOBufferFrameSize - firstPartFrameSize;
     }
     
-    // Keep track of last outputSampleTime and the cleared buffer status.
-    static Float64 lastOutputSampleTime = 0;
-    static Boolean isBufferClear = true;
+    // Keep track of last outputSampleTime and buffer clear status per device
+    static Float64 lastOutputSampleTime_Mic = 0;
+    static Float64 lastOutputSampleTime_Speaker = 0;
+    static Boolean isBufferClear_Mic = true;
+    static Boolean isBufferClear_Speaker = true;
     
-    // From TishAudio to Application
+    // Select the correct buffer and state based on device ID
+    Float32* ringBuffer = (inDeviceObjectID == kObjectID_Device) ? gRingBuffer_Mic : gRingBuffer_Speaker;
+    Float64* lastOutputSampleTime = (inDeviceObjectID == kObjectID_Device) ? &lastOutputSampleTime_Mic : &lastOutputSampleTime_Speaker;
+    Boolean* isBufferClear = (inDeviceObjectID == kObjectID_Device) ? &isBufferClear_Mic : &isBufferClear_Speaker;
+    
+    // Safety check: ensure buffer is allocated
+    if (ringBuffer == NULL)
+    {
+        DebugMsg("TishAudio_DoIOOperation: ring buffer not allocated for device %d", inDeviceObjectID);
+        vDSP_vclr(ioMainBuffer, 1, inIOBufferFrameSize * kNumber_Of_Channels);
+        goto Done;
+    }
+    
+    // From TishAudio to Application (app reads from virtual device)
     if(inOperationID == kAudioServerPlugInIOOperationReadInput)
     {
-        // If mute is one let's just fill the buffer with zeros or if there's no apps outputting audio
-        if (gMute_Master_Value || lastOutputSampleTime - inIOBufferFrameSize < inIOCycleInfo->mInputTime.mSampleTime)
+        // If mute is on or no apps outputting audio, fill buffer with zeros
+        if (gMute_Master_Value || *lastOutputSampleTime - inIOBufferFrameSize < inIOCycleInfo->mInputTime.mSampleTime)
         {
             // Clear the ioMainBuffer
             vDSP_vclr(ioMainBuffer, 1, inIOBufferFrameSize * kNumber_Of_Channels);
             
-            // Clear the ring buffer.
-            if (!isBufferClear)
+            // Clear the ring buffer
+            if (!*isBufferClear)
             {
-                vDSP_vclr(gRingBuffer, 1, kRing_Buffer_Frame_Size * kNumber_Of_Channels);
-                isBufferClear = true;
+                vDSP_vclr(ringBuffer, 1, kRing_Buffer_Frame_Size * kNumber_Of_Channels);
+                *isBufferClear = true;
             }
         }
         else
         {
-            // Copy the buffers.
-            memcpy(ioMainBuffer, gRingBuffer + ringBufferFrameLocationStart * kNumber_Of_Channels, firstPartFrameSize * kNumber_Of_Channels * sizeof(Float32));
-            memcpy((Float32*)ioMainBuffer + firstPartFrameSize * kNumber_Of_Channels, gRingBuffer, secondPartFrameSize * kNumber_Of_Channels * sizeof(Float32));
+            // Copy from ring buffer to app's buffer
+            memcpy(ioMainBuffer, ringBuffer + ringBufferFrameLocationStart * kNumber_Of_Channels, firstPartFrameSize * kNumber_Of_Channels * sizeof(Float32));
+            memcpy((Float32*)ioMainBuffer + firstPartFrameSize * kNumber_Of_Channels, ringBuffer, secondPartFrameSize * kNumber_Of_Channels * sizeof(Float32));
             
-            // Finally we'll apply the output volume to the buffer.
-	    if(kEnableVolumeControl)
-	    {
-	 	vDSP_vsmul(ioMainBuffer, 1, &gVolume_Master_Value, ioMainBuffer, 1, inIOBufferFrameSize * kNumber_Of_Channels);
-	    }
-
+            // Apply output volume
+            if(kEnableVolumeControl)
+            {
+                vDSP_vsmul(ioMainBuffer, 1, &gVolume_Master_Value, ioMainBuffer, 1, inIOBufferFrameSize * kNumber_Of_Channels);
+            }
         }
     }
     
-    // From Application to TishAudio
+    // From Application to TishAudio (app writes to virtual device)
     if(inOperationID == kAudioServerPlugInIOOperationWriteMix)
     {
-        
-        // Overload error.
+        // Overload error check
         if (inIOCycleInfo->mCurrentTime.mSampleTime > inIOCycleInfo->mOutputTime.mSampleTime + inIOBufferFrameSize + kLatency_Frame_Size)
         {
             DebugMsg("TishAudio overload error. kAudioServerPlugInIOOperationWriteMix was unable to complete operation before the deadline. Try increasing the buffer frame size.");
             return kAudioHardwareUnspecifiedError;
         }
         
+        // Copy from app's buffer to ring buffer
+        memcpy(ringBuffer + ringBufferFrameLocationStart * kNumber_Of_Channels, ioMainBuffer, firstPartFrameSize * kNumber_Of_Channels * sizeof(Float32));
+        memcpy(ringBuffer, (Float32*)ioMainBuffer + firstPartFrameSize * kNumber_Of_Channels, secondPartFrameSize * kNumber_Of_Channels * sizeof(Float32));
         
-        // Copy the buffers.
-        memcpy(gRingBuffer + ringBufferFrameLocationStart * kNumber_Of_Channels, ioMainBuffer, firstPartFrameSize * kNumber_Of_Channels * sizeof(Float32));
-        memcpy(gRingBuffer, (Float32*)ioMainBuffer + firstPartFrameSize * kNumber_Of_Channels, secondPartFrameSize * kNumber_Of_Channels * sizeof(Float32));
-        
-        // Save the last output time.
-        lastOutputSampleTime = inIOCycleInfo->mOutputTime.mSampleTime + inIOBufferFrameSize;
-        isBufferClear = false;
+        // Save the last output time
+        *lastOutputSampleTime = inIOCycleInfo->mOutputTime.mSampleTime + inIOBufferFrameSize;
+        *isBufferClear = false;
     }
 
 Done:
