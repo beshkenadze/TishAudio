@@ -113,6 +113,7 @@ enum
 {
     kObjectID_PlugIn                    = kAudioObjectPlugInObject,
     kObjectID_Box                       = 2,
+    // Device 1 (TishAudio Mic)
     kObjectID_Device                    = 3,
     kObjectID_Stream_Input              = 4,
     kObjectID_Volume_Input_Master       = 5,
@@ -122,7 +123,14 @@ enum
     kObjectID_Mute_Output_Master        = 9,
     kObjectID_Pitch_Adjust              = 10,
     kObjectID_ClockSource               = 11,
+    // Device 2 (TishAudio Speaker)
     kObjectID_Device2                   = 12,
+    kObjectID_Device2_Stream_Input      = 13,
+    kObjectID_Device2_Volume_Input_Master = 14,
+    kObjectID_Device2_Mute_Input_Master = 15,
+    kObjectID_Device2_Stream_Output     = 16,
+    kObjectID_Device2_Volume_Output_Master = 17,
+    kObjectID_Device2_Mute_Output_Master = 18,
 };
 
 enum
@@ -169,11 +177,11 @@ struct ObjectInfo {
 #define                             kDevice_ModelUID                    kDriver_Name "_ModelUID"
 
 #ifndef kDevice_Name
-#define                             kDevice_Name                        "TishAudio Mic"
+#define                             kDevice_Name                        "Tish Mic"
 #endif
 
 #ifndef kDevice2_Name
-#define                             kDevice2_Name                       "TishAudio Speaker"
+#define                             kDevice2_Name                       "Tish Speakers"
 #endif
 
 #ifndef kDevice_IsHidden
@@ -191,11 +199,11 @@ struct ObjectInfo {
 #endif
 
 #ifndef kDevice_HasOutput
-#define                             kDevice_HasOutput                   true
+#define                             kDevice_HasOutput                   false
 #endif
 
 #ifndef kDevice2_HasInput
-#define                             kDevice2_HasInput                   true
+#define                             kDevice2_HasInput                   false
 #endif
 
 #ifndef kDevice2_HasOutput
@@ -331,14 +339,14 @@ static struct ObjectInfo            kDevice_ObjectList[]                = {
 
 static struct ObjectInfo            kDevice2_ObjectList[]                = {
 #if kDevice2_HasInput
-    { kObjectID_Stream_Input,           kObjectType_Stream,     kAudioObjectPropertyScopeInput  },
-    { kObjectID_Volume_Input_Master,    kObjectType_Control,    kAudioObjectPropertyScopeInput  },
-    { kObjectID_Mute_Input_Master,      kObjectType_Control,    kAudioObjectPropertyScopeInput  },
+    { kObjectID_Device2_Stream_Input,           kObjectType_Stream,     kAudioObjectPropertyScopeInput  },
+    { kObjectID_Device2_Volume_Input_Master,    kObjectType_Control,    kAudioObjectPropertyScopeInput  },
+    { kObjectID_Device2_Mute_Input_Master,      kObjectType_Control,    kAudioObjectPropertyScopeInput  },
 #endif
 #if kDevice2_HasOutput
-    { kObjectID_Stream_Output,          kObjectType_Stream,     kAudioObjectPropertyScopeOutput },
-    { kObjectID_Volume_Output_Master,   kObjectType_Control,    kAudioObjectPropertyScopeOutput },
-    { kObjectID_Mute_Output_Master,     kObjectType_Control,    kAudioObjectPropertyScopeOutput },
+    { kObjectID_Device2_Stream_Output,          kObjectType_Stream,     kAudioObjectPropertyScopeOutput },
+    { kObjectID_Device2_Volume_Output_Master,   kObjectType_Control,    kAudioObjectPropertyScopeOutput },
+    { kObjectID_Device2_Mute_Output_Master,     kObjectType_Control,    kAudioObjectPropertyScopeOutput },
 #endif
 };
 
@@ -1063,6 +1071,8 @@ static Boolean	TishAudio_HasProperty(AudioServerPlugInDriverRef inDriver, AudioO
 		
 		case kObjectID_Stream_Input:
 		case kObjectID_Stream_Output:
+		case kObjectID_Device2_Stream_Input:
+		case kObjectID_Device2_Stream_Output:
 			theAnswer = TishAudio_HasStreamProperty(inDriver, inObjectID, inClientProcessID, inAddress);
 			break;
 		
@@ -1070,6 +1080,10 @@ static Boolean	TishAudio_HasProperty(AudioServerPlugInDriverRef inDriver, AudioO
 		case kObjectID_Mute_Output_Master:
 		case kObjectID_Volume_Input_Master:
 		case kObjectID_Mute_Input_Master:
+		case kObjectID_Device2_Volume_Output_Master:
+		case kObjectID_Device2_Mute_Output_Master:
+		case kObjectID_Device2_Volume_Input_Master:
+		case kObjectID_Device2_Mute_Input_Master:
 		case kObjectID_Pitch_Adjust:
         case kObjectID_ClockSource:
 			theAnswer = TishAudio_HasControlProperty(inDriver, inObjectID, inClientProcessID, inAddress);
@@ -1113,6 +1127,8 @@ static OSStatus	TishAudio_IsPropertySettable(AudioServerPlugInDriverRef inDriver
 		
 		case kObjectID_Stream_Input:
 		case kObjectID_Stream_Output:
+		case kObjectID_Device2_Stream_Input:
+		case kObjectID_Device2_Stream_Output:
 			theAnswer = TishAudio_IsStreamPropertySettable(inDriver, inObjectID, inClientProcessID, inAddress, outIsSettable);
 			break;
 
@@ -1120,6 +1136,10 @@ static OSStatus	TishAudio_IsPropertySettable(AudioServerPlugInDriverRef inDriver
 		case kObjectID_Mute_Output_Master:
 		case kObjectID_Volume_Input_Master:
 		case kObjectID_Mute_Input_Master:
+		case kObjectID_Device2_Volume_Output_Master:
+		case kObjectID_Device2_Mute_Output_Master:
+		case kObjectID_Device2_Volume_Input_Master:
+		case kObjectID_Device2_Mute_Input_Master:
 		case kObjectID_Pitch_Adjust:
         case kObjectID_ClockSource:
 			theAnswer = TishAudio_IsControlPropertySettable(inDriver, inObjectID, inClientProcessID, inAddress, outIsSettable);
@@ -1166,6 +1186,8 @@ static OSStatus	TishAudio_GetPropertyDataSize(AudioServerPlugInDriverRef inDrive
 		
 		case kObjectID_Stream_Input:
 		case kObjectID_Stream_Output:
+		case kObjectID_Device2_Stream_Input:
+		case kObjectID_Device2_Stream_Output:
 			theAnswer = TishAudio_GetStreamPropertyDataSize(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, outDataSize);
 			break;
 			
@@ -1173,6 +1195,10 @@ static OSStatus	TishAudio_GetPropertyDataSize(AudioServerPlugInDriverRef inDrive
 		case kObjectID_Mute_Output_Master:
 		case kObjectID_Volume_Input_Master:
 		case kObjectID_Mute_Input_Master:
+		case kObjectID_Device2_Volume_Output_Master:
+		case kObjectID_Device2_Mute_Output_Master:
+		case kObjectID_Device2_Volume_Input_Master:
+		case kObjectID_Device2_Mute_Input_Master:
 		case kObjectID_Pitch_Adjust:
         case kObjectID_ClockSource:
 			theAnswer = TishAudio_GetControlPropertyDataSize(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, outDataSize);
@@ -1220,6 +1246,8 @@ static OSStatus	TishAudio_GetPropertyData(AudioServerPlugInDriverRef inDriver, A
 		
 		case kObjectID_Stream_Input:
 		case kObjectID_Stream_Output:
+		case kObjectID_Device2_Stream_Input:
+		case kObjectID_Device2_Stream_Output:
 			theAnswer = TishAudio_GetStreamPropertyData(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, inDataSize, outDataSize, outData);
 			break;
 		
@@ -1227,6 +1255,10 @@ static OSStatus	TishAudio_GetPropertyData(AudioServerPlugInDriverRef inDriver, A
 		case kObjectID_Mute_Output_Master:
 		case kObjectID_Volume_Input_Master:
 		case kObjectID_Mute_Input_Master:
+		case kObjectID_Device2_Volume_Output_Master:
+		case kObjectID_Device2_Mute_Output_Master:
+		case kObjectID_Device2_Volume_Input_Master:
+		case kObjectID_Device2_Mute_Input_Master:
 		case kObjectID_Pitch_Adjust:
         case kObjectID_ClockSource:
 			theAnswer = TishAudio_GetControlPropertyData(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, inDataSize, outDataSize, outData);
@@ -1272,6 +1304,8 @@ static OSStatus	TishAudio_SetPropertyData(AudioServerPlugInDriverRef inDriver, A
 		
 		case kObjectID_Stream_Input:
 		case kObjectID_Stream_Output:
+		case kObjectID_Device2_Stream_Input:
+		case kObjectID_Device2_Stream_Output:
 			theAnswer = TishAudio_SetStreamPropertyData(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, inDataSize, inData, &theNumberPropertiesChanged, theChangedAddresses);
 			break;
 			
@@ -1279,6 +1313,10 @@ static OSStatus	TishAudio_SetPropertyData(AudioServerPlugInDriverRef inDriver, A
 		case kObjectID_Mute_Output_Master:
 		case kObjectID_Volume_Input_Master:
 		case kObjectID_Mute_Input_Master:
+		case kObjectID_Device2_Volume_Output_Master:
+		case kObjectID_Device2_Mute_Output_Master:
+		case kObjectID_Device2_Volume_Input_Master:
+		case kObjectID_Device2_Mute_Input_Master:
 		case kObjectID_Pitch_Adjust:
         case kObjectID_ClockSource:
 			theAnswer = TishAudio_SetControlPropertyData(inDriver, inObjectID, inClientProcessID, inAddress, inQualifierDataSize, inQualifierData, inDataSize, inData, &theNumberPropertiesChanged, theChangedAddresses);
@@ -1419,9 +1457,10 @@ static OSStatus	TishAudio_GetPlugInPropertyDataSize(AudioServerPlugInDriverRef i
 			break;
 			
 		case kAudioObjectPropertyOwnedObjects:
+			//	Plugin owns: Box + Device1 + Device2 (when acquired) = 3 items
 			if(gBox_Acquired)
 			{
-				*outDataSize = 2 * sizeof(AudioClassID);
+				*outDataSize = 3 * sizeof(AudioClassID);
 			}
 			else
 			{
@@ -1521,21 +1560,25 @@ static OSStatus	TishAudio_GetPlugInPropertyData(AudioServerPlugInDriverRef inDri
 			//	case, only that number of items will be returned
 			theNumberItemsToFetch = inDataSize / sizeof(AudioObjectID);
 			
-			//	Clamp that to the number of boxes this driver implements (which is just 1)
-			if(theNumberItemsToFetch > (gBox_Acquired ? 2 : 1))
+			//	Plugin owns: Box + Device1 + Device2 (when acquired) = 3 items
+			//	Or just Box when not acquired = 1 item
+			if(theNumberItemsToFetch > (gBox_Acquired ? 3 : 1))
 			{
-				theNumberItemsToFetch = (gBox_Acquired ? 2 : 1);
+				theNumberItemsToFetch = (gBox_Acquired ? 3 : 1);
 			}
 			
-			//	Write the devices' object IDs into the return value
+			//	Write the owned object IDs into the return value
+			if(theNumberItemsToFetch > 0)
+			{
+				((AudioObjectID*)outData)[0] = kObjectID_Box;
+			}
 			if(theNumberItemsToFetch > 1)
 			{
-				((AudioObjectID*)outData)[0] = kObjectID_Box;
-				((AudioObjectID*)outData)[0] = kObjectID_Device;
+				((AudioObjectID*)outData)[1] = kObjectID_Device;
 			}
-			else if(theNumberItemsToFetch > 0)
+			if(theNumberItemsToFetch > 2)
 			{
-				((AudioObjectID*)outData)[0] = kObjectID_Box;
+				((AudioObjectID*)outData)[2] = kObjectID_Device2;
 			}
 			
 			//	Return how many bytes we wrote to
@@ -2819,7 +2862,7 @@ static OSStatus	TishAudio_GetDevicePropertyData(AudioServerPlugInDriverRef inDri
                 case kObjectID_Device2:
                     for (UInt32 i = 0, k = 0; k < theNumberItemsToFetch; i++)
                     {
-                        if ((kDevice_ObjectList[i].type == kObjectType_Control) && !(!gPitch_Adjust_Enabled && kDevice_ObjectList[i].id==kObjectID_Pitch_Adjust))
+                        if (kDevice2_ObjectList[i].type == kObjectType_Control)
                         {
                             ((AudioObjectID*)outData)[k++] = kDevice2_ObjectList[i].id;
                         }
@@ -2992,7 +3035,8 @@ static OSStatus	TishAudio_SetDevicePropertyData(AudioServerPlugInDriverRef inDri
 			if(*((const Float64*)inData) != theOldSampleRate)
 			{
 				//	we dispatch this so that the change can happen asynchronously
-				dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{ gPlugIn_Host->RequestDeviceConfigurationChange(gPlugIn_Host, kObjectID_Device, ChangeAction_SetSampleRate, NULL); });
+				AudioObjectID theDeviceID = inObjectID;
+				dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{ gPlugIn_Host->RequestDeviceConfigurationChange(gPlugIn_Host, theDeviceID, ChangeAction_SetSampleRate, NULL); });
 			}
 			break;
 		
@@ -3019,7 +3063,7 @@ static Boolean	TishAudio_HasStreamProperty(AudioServerPlugInDriverRef inDriver, 
 	//	check the arguments
 	FailIf(inDriver != gAudioServerPlugInDriverRef, Done, "TishAudio_HasStreamProperty: bad driver reference");
 	FailIf(inAddress == NULL, Done, "TishAudio_HasStreamProperty: no address");
-	FailIf((inObjectID != kObjectID_Stream_Input) && (inObjectID != kObjectID_Stream_Output), Done, "TishAudio_HasStreamProperty: not a stream object");
+	FailIf((inObjectID != kObjectID_Stream_Input) && (inObjectID != kObjectID_Stream_Output) && (inObjectID != kObjectID_Device2_Stream_Input) && (inObjectID != kObjectID_Device2_Stream_Output), Done, "TishAudio_HasStreamProperty: not a stream object");
 	
 	//	Note that for each object, this driver implements all the required properties plus a few
 	//	extras that are useful but not required. There is more detailed commentary about each
@@ -3061,7 +3105,7 @@ static OSStatus	TishAudio_IsStreamPropertySettable(AudioServerPlugInDriverRef in
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_IsStreamPropertySettable: bad driver reference");
 	FailWithAction(inAddress == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "TishAudio_IsStreamPropertySettable: no address");
 	FailWithAction(outIsSettable == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "TishAudio_IsStreamPropertySettable: no place to put the return value");
-	FailWithAction((inObjectID != kObjectID_Stream_Input) && (inObjectID != kObjectID_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_IsStreamPropertySettable: not a stream object");
+	FailWithAction((inObjectID != kObjectID_Stream_Input) && (inObjectID != kObjectID_Stream_Output) && (inObjectID != kObjectID_Device2_Stream_Input) && (inObjectID != kObjectID_Device2_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_IsStreamPropertySettable: not a stream object");
 	
 	//	Note that for each object, this driver implements all the required properties plus a few
 	//	extras that are useful but not required. There is more detailed commentary about each
@@ -3109,7 +3153,7 @@ static OSStatus	TishAudio_GetStreamPropertyDataSize(AudioServerPlugInDriverRef i
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_GetStreamPropertyDataSize: bad driver reference");
 	FailWithAction(inAddress == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "TishAudio_GetStreamPropertyDataSize: no address");
 	FailWithAction(outDataSize == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "TishAudio_GetStreamPropertyDataSize: no place to put the return value");
-	FailWithAction((inObjectID != kObjectID_Stream_Input) && (inObjectID != kObjectID_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_GetStreamPropertyDataSize: not a stream object");
+	FailWithAction((inObjectID != kObjectID_Stream_Input) && (inObjectID != kObjectID_Stream_Output) && (inObjectID != kObjectID_Device2_Stream_Input) && (inObjectID != kObjectID_Device2_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_GetStreamPropertyDataSize: not a stream object");
 	
 	//	Note that for each object, this driver implements all the required properties plus a few
 	//	extras that are useful but not required. There is more detailed commentary about each
@@ -3184,7 +3228,7 @@ static OSStatus	TishAudio_GetStreamPropertyData(AudioServerPlugInDriverRef inDri
 	FailWithAction(inAddress == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "TishAudio_GetStreamPropertyData: no address");
 	FailWithAction(outDataSize == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "TishAudio_GetStreamPropertyData: no place to put the return value size");
 	FailWithAction(outData == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "TishAudio_GetStreamPropertyData: no place to put the return value");
-	FailWithAction((inObjectID != kObjectID_Stream_Input) && (inObjectID != kObjectID_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_GetStreamPropertyData: not a stream object");
+	FailWithAction((inObjectID != kObjectID_Stream_Input) && (inObjectID != kObjectID_Stream_Output) && (inObjectID != kObjectID_Device2_Stream_Input) && (inObjectID != kObjectID_Device2_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_GetStreamPropertyData: not a stream object");
 	
 	//	Note that for each object, this driver implements all the required properties plus a few
 	//	extras that are useful but not required.
@@ -3210,7 +3254,11 @@ static OSStatus	TishAudio_GetStreamPropertyData(AudioServerPlugInDriverRef inDri
 		case kAudioObjectPropertyOwner:
 			//	The stream's owner is the device object
 			FailWithAction(inDataSize < sizeof(AudioObjectID), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetStreamPropertyData: not enough space for the return value of kAudioObjectPropertyOwner for the stream");
-			*((AudioObjectID*)outData) = kObjectID_Device;
+			if (inObjectID == kObjectID_Device2_Stream_Input || inObjectID == kObjectID_Device2_Stream_Output) {
+				*((AudioObjectID*)outData) = kObjectID_Device2;
+			} else {
+				*((AudioObjectID*)outData) = kObjectID_Device;
+			}
 			*outDataSize = sizeof(AudioObjectID);
 			break;
 			
@@ -3225,7 +3273,11 @@ static OSStatus	TishAudio_GetStreamPropertyData(AudioServerPlugInDriverRef inDri
 			//	value.
 			FailWithAction(inDataSize < sizeof(UInt32), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetStreamPropertyData: not enough space for the return value of kAudioStreamPropertyIsActive for the stream");
 			pthread_mutex_lock(&gPlugIn_StateMutex);
-			*((UInt32*)outData) = (inObjectID == kObjectID_Stream_Input) ? gStream_Input_IsActive : gStream_Output_IsActive;
+			if (inObjectID == kObjectID_Stream_Input || inObjectID == kObjectID_Device2_Stream_Input) {
+				*((UInt32*)outData) = gStream_Input_IsActive;
+			} else {
+				*((UInt32*)outData) = gStream_Output_IsActive;
+			}
 			pthread_mutex_unlock(&gPlugIn_StateMutex);
 			*outDataSize = sizeof(UInt32);
 			break;
@@ -3233,7 +3285,7 @@ static OSStatus	TishAudio_GetStreamPropertyData(AudioServerPlugInDriverRef inDri
 		case kAudioStreamPropertyDirection:
 			//	This returns whether the stream is an input stream or an output stream.
 			FailWithAction(inDataSize < sizeof(UInt32), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetStreamPropertyData: not enough space for the return value of kAudioStreamPropertyDirection for the stream");
-			*((UInt32*)outData) = (inObjectID == kObjectID_Stream_Input) ? 1 : 0;
+			*((UInt32*)outData) = (inObjectID == kObjectID_Stream_Input || inObjectID == kObjectID_Device2_Stream_Input) ? 1 : 0;
 			*outDataSize = sizeof(UInt32);
 			break;
 
@@ -3242,7 +3294,7 @@ static OSStatus	TishAudio_GetStreamPropertyData(AudioServerPlugInDriverRef inDri
 			//	such as a speaker or headphones, or a microphone. Values for this property
 			//	are defined in <CoreAudio/AudioHardwareBase.h>
 			FailWithAction(inDataSize < sizeof(UInt32), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetStreamPropertyData: not enough space for the return value of kAudioStreamPropertyTerminalType for the stream");
-			*((UInt32*)outData) = (inObjectID == kObjectID_Stream_Input) ? kAudioStreamTerminalTypeMicrophone : kAudioStreamTerminalTypeSpeaker;
+			*((UInt32*)outData) = (inObjectID == kObjectID_Stream_Input || inObjectID == kObjectID_Device2_Stream_Input) ? kAudioStreamTerminalTypeMicrophone : kAudioStreamTerminalTypeSpeaker;
 			*outDataSize = sizeof(UInt32);
 			break;
 
@@ -3341,7 +3393,7 @@ static OSStatus	TishAudio_SetStreamPropertyData(AudioServerPlugInDriverRef inDri
 	FailWithAction(inAddress == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "TishAudio_SetStreamPropertyData: no address");
 	FailWithAction(outNumberPropertiesChanged == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "TishAudio_SetStreamPropertyData: no place to return the number of properties that changed");
 	FailWithAction(outChangedAddresses == NULL, theAnswer = kAudioHardwareIllegalOperationError, Done, "TishAudio_SetStreamPropertyData: no place to return the properties that changed");
-	FailWithAction((inObjectID != kObjectID_Stream_Input) && (inObjectID != kObjectID_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_SetStreamPropertyData: not a stream object");
+	FailWithAction((inObjectID != kObjectID_Stream_Input) && (inObjectID != kObjectID_Stream_Output) && (inObjectID != kObjectID_Device2_Stream_Input) && (inObjectID != kObjectID_Device2_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_SetStreamPropertyData: not a stream object");
 	
 	//	initialize the returned number of changed properties
 	*outNumberPropertiesChanged = 0;
@@ -3356,7 +3408,7 @@ static OSStatus	TishAudio_SetStreamPropertyData(AudioServerPlugInDriverRef inDri
 			//	so we can just save the state and send the notification.
 			FailWithAction(inDataSize != sizeof(UInt32), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_SetStreamPropertyData: wrong size for the data for kAudioDevicePropertyNominalSampleRate");
 			pthread_mutex_lock(&gPlugIn_StateMutex);
-			if(inObjectID == kObjectID_Stream_Input)
+			if(inObjectID == kObjectID_Stream_Input || inObjectID == kObjectID_Device2_Stream_Input)
 			{
 				if(gStream_Input_IsActive != (*((const UInt32*)inData) != 0))
 				{
@@ -3405,7 +3457,8 @@ static OSStatus	TishAudio_SetStreamPropertyData(AudioServerPlugInDriverRef inDri
 			if(((const AudioStreamBasicDescription*)inData)->mSampleRate != theOldSampleRate)
 			{
 				//	we dispatch this so that the change can happen asynchronously
-				dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{ gPlugIn_Host->RequestDeviceConfigurationChange(gPlugIn_Host, kObjectID_Device, ChangeAction_SetSampleRate, NULL); });
+				AudioObjectID theDeviceID = (inObjectID == kObjectID_Device2_Stream_Input || inObjectID == kObjectID_Device2_Stream_Output) ? kObjectID_Device2 : kObjectID_Device;
+				dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{ gPlugIn_Host->RequestDeviceConfigurationChange(gPlugIn_Host, theDeviceID, ChangeAction_SetSampleRate, NULL); });
 			}
 			break;
 		
@@ -3440,6 +3493,8 @@ static Boolean	TishAudio_HasControlProperty(AudioServerPlugInDriverRef inDriver,
 	{
 		case kObjectID_Volume_Input_Master:
 		case kObjectID_Volume_Output_Master:
+		case kObjectID_Device2_Volume_Input_Master:
+		case kObjectID_Device2_Volume_Output_Master:
 			switch(inAddress->mSelector)
 			{
 				case kAudioObjectPropertyBaseClass:
@@ -3460,6 +3515,8 @@ static Boolean	TishAudio_HasControlProperty(AudioServerPlugInDriverRef inDriver,
 		
 		case kObjectID_Mute_Input_Master:
 		case kObjectID_Mute_Output_Master:
+		case kObjectID_Device2_Mute_Input_Master:
+		case kObjectID_Device2_Mute_Output_Master:
 			switch(inAddress->mSelector)
 			{
 				case kAudioObjectPropertyBaseClass:
@@ -3533,6 +3590,8 @@ static OSStatus	TishAudio_IsControlPropertySettable(AudioServerPlugInDriverRef i
 	{
 		case kObjectID_Volume_Input_Master:
 		case kObjectID_Volume_Output_Master:
+		case kObjectID_Device2_Volume_Input_Master:
+		case kObjectID_Device2_Volume_Output_Master:
 			switch(inAddress->mSelector)
 			{
 				case kAudioObjectPropertyBaseClass:
@@ -3560,6 +3619,8 @@ static OSStatus	TishAudio_IsControlPropertySettable(AudioServerPlugInDriverRef i
 		
 		case kObjectID_Mute_Input_Master:
 		case kObjectID_Mute_Output_Master:
+		case kObjectID_Device2_Mute_Input_Master:
+		case kObjectID_Device2_Mute_Output_Master:
 			switch(inAddress->mSelector)
 			{
 				case kAudioObjectPropertyBaseClass:
@@ -3654,6 +3715,8 @@ static OSStatus	TishAudio_GetControlPropertyDataSize(AudioServerPlugInDriverRef 
 	{
 		case kObjectID_Volume_Input_Master:
 		case kObjectID_Volume_Output_Master:
+		case kObjectID_Device2_Volume_Input_Master:
+		case kObjectID_Device2_Volume_Output_Master:
 			switch(inAddress->mSelector)
 			{
 				case kAudioObjectPropertyBaseClass:
@@ -3708,6 +3771,8 @@ static OSStatus	TishAudio_GetControlPropertyDataSize(AudioServerPlugInDriverRef 
 		
 		case kObjectID_Mute_Input_Master:
 		case kObjectID_Mute_Output_Master:
+		case kObjectID_Device2_Mute_Input_Master:
+		case kObjectID_Device2_Mute_Output_Master:
 			switch(inAddress->mSelector)
 			{
 				case kAudioObjectPropertyBaseClass:
@@ -3851,6 +3916,8 @@ static OSStatus	TishAudio_GetControlPropertyData(AudioServerPlugInDriverRef inDr
 	{
 		case kObjectID_Volume_Input_Master:
 		case kObjectID_Volume_Output_Master:
+		case kObjectID_Device2_Volume_Input_Master:
+		case kObjectID_Device2_Volume_Output_Master:
 			switch(inAddress->mSelector)
 			{
 				case kAudioObjectPropertyBaseClass:
@@ -3870,7 +3937,11 @@ static OSStatus	TishAudio_GetControlPropertyData(AudioServerPlugInDriverRef inDr
 				case kAudioObjectPropertyOwner:
 					//	The control's owner is the device object
 					FailWithAction(inDataSize < sizeof(AudioObjectID), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetControlPropertyData: not enough space for the return value of kAudioObjectPropertyOwner for the volume control");
-					*((AudioObjectID*)outData) = kObjectID_Device;
+					if (inObjectID == kObjectID_Device2_Volume_Input_Master || inObjectID == kObjectID_Device2_Volume_Output_Master) {
+						*((AudioObjectID*)outData) = kObjectID_Device2;
+					} else {
+						*((AudioObjectID*)outData) = kObjectID_Device;
+					}
 					*outDataSize = sizeof(AudioObjectID);
 					break;
 					
@@ -3882,7 +3953,7 @@ static OSStatus	TishAudio_GetControlPropertyData(AudioServerPlugInDriverRef inDr
 				case kAudioControlPropertyScope:
 					//	This property returns the scope that the control is attached to.
 					FailWithAction(inDataSize < sizeof(AudioObjectPropertyScope), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetControlPropertyData: not enough space for the return value of kAudioControlPropertyScope for the volume control");
-					*((AudioObjectPropertyScope*)outData) = (inObjectID == kObjectID_Volume_Input_Master) ? kAudioObjectPropertyScopeInput : kAudioObjectPropertyScopeOutput;
+					*((AudioObjectPropertyScope*)outData) = (inObjectID == kObjectID_Volume_Input_Master || inObjectID == kObjectID_Device2_Volume_Input_Master) ? kAudioObjectPropertyScopeInput : kAudioObjectPropertyScopeOutput;
 					*outDataSize = sizeof(AudioObjectPropertyScope);
 					break;
 
@@ -3979,6 +4050,8 @@ static OSStatus	TishAudio_GetControlPropertyData(AudioServerPlugInDriverRef inDr
 		
 		case kObjectID_Mute_Input_Master:
 		case kObjectID_Mute_Output_Master:
+		case kObjectID_Device2_Mute_Input_Master:
+		case kObjectID_Device2_Mute_Output_Master:
 			switch(inAddress->mSelector)
 			{
 				case kAudioObjectPropertyBaseClass:
@@ -3998,7 +4071,11 @@ static OSStatus	TishAudio_GetControlPropertyData(AudioServerPlugInDriverRef inDr
 				case kAudioObjectPropertyOwner:
 					//	The control's owner is the device object
 					FailWithAction(inDataSize < sizeof(AudioObjectID), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetControlPropertyData: not enough space for the return value of kAudioObjectPropertyOwner for the mute control");
-					*((AudioObjectID*)outData) = kObjectID_Device;
+					if (inObjectID == kObjectID_Device2_Mute_Input_Master || inObjectID == kObjectID_Device2_Mute_Output_Master) {
+						*((AudioObjectID*)outData) = kObjectID_Device2;
+					} else {
+						*((AudioObjectID*)outData) = kObjectID_Device;
+					}
 					*outDataSize = sizeof(AudioObjectID);
 					break;
 					
@@ -4010,7 +4087,7 @@ static OSStatus	TishAudio_GetControlPropertyData(AudioServerPlugInDriverRef inDr
 				case kAudioControlPropertyScope:
 					//	This property returns the scope that the control is attached to.
 					FailWithAction(inDataSize < sizeof(AudioObjectPropertyScope), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetControlPropertyData: not enough space for the return value of kAudioControlPropertyScope for the mute control");
-					*((AudioObjectPropertyScope*)outData) = (inObjectID == kObjectID_Mute_Input_Master) ? kAudioObjectPropertyScopeInput : kAudioObjectPropertyScopeOutput;
+					*((AudioObjectPropertyScope*)outData) = (inObjectID == kObjectID_Mute_Input_Master || inObjectID == kObjectID_Device2_Mute_Input_Master) ? kAudioObjectPropertyScopeInput : kAudioObjectPropertyScopeOutput;
 					*outDataSize = sizeof(AudioObjectPropertyScope);
 					break;
 
@@ -4697,7 +4774,7 @@ static OSStatus	TishAudio_DoIOOperation(AudioServerPlugInDriverRef inDriver, Aud
 	//	check the arguments
 	FailWithAction(inDriver != gAudioServerPlugInDriverRef, theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_DoIOOperation: bad driver reference");
 	FailWithAction(inDeviceObjectID != kObjectID_Device && inDeviceObjectID != kObjectID_Device2, theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_DoIOOperation: bad device ID");
-	FailWithAction((inStreamObjectID != kObjectID_Stream_Input) && (inStreamObjectID != kObjectID_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_DoIOOperation: bad stream ID");
+	FailWithAction((inStreamObjectID != kObjectID_Stream_Input) && (inStreamObjectID != kObjectID_Stream_Output) && (inStreamObjectID != kObjectID_Device2_Stream_Input) && (inStreamObjectID != kObjectID_Device2_Stream_Output), theAnswer = kAudioHardwareBadObjectError, Done, "TishAudio_DoIOOperation: bad stream ID");
 
     // Calculate the ring buffer offsets and splits.
     UInt64 mSampleTime = inOperationID == kAudioServerPlugInIOOperationReadInput ? inIOCycleInfo->mInputTime.mSampleTime : inIOCycleInfo->mOutputTime.mSampleTime;

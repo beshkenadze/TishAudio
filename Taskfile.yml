@@ -55,6 +55,24 @@ tasks:
       - sudo killall -9 coreaudiod
       - echo "TishAudio driver uninstalled"
 
+  reinstall:
+    desc: Clean build and reinstall driver (requires sudo)
+    cmds:
+      - rm -rf ~/Library/Developer/Xcode/DerivedData/TishAudio-*
+      - tuist generate
+      - xcodebuild -scheme {{.SCHEME}} -configuration {{.CONFIGURATION}} clean build
+      - |
+        DRIVER_PATH=$(find ~/Library/Developer/Xcode/DerivedData/TishAudio-*/Build/Products/Release -name "TishAudio.driver" -type d | head -1)
+        if [ -z "$DRIVER_PATH" ]; then
+          echo "Driver not found after build."
+          exit 1
+        fi
+        echo "Installing from: $DRIVER_PATH"
+        sudo rm -rf {{.DRIVER_INSTALL_PATH}}/TishAudio.driver
+        sudo cp -R "$DRIVER_PATH" {{.DRIVER_INSTALL_PATH}}/
+        sudo killall -9 coreaudiod
+        echo "TishAudio driver reinstalled and CoreAudio restarted"
+
   status:
     desc: Check if TishAudio driver is installed
     cmds:
