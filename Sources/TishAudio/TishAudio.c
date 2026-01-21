@@ -311,6 +311,22 @@ static SInt32 FindClientByID(UInt32 clientID, AudioObjectID deviceObjectID) {
     return -1;
 }
 
+// Helper: Populate client info from HAL client info
+static void PopulateClientInfo(TishClientInfo* client, const AudioServerPlugInClientInfo* inClientInfo, AudioObjectID deviceObjectID) {
+    client->clientID = inClientInfo->mClientID;
+    client->deviceObjectID = deviceObjectID;
+    client->processID = inClientInfo->mProcessID;
+    client->isDoingIO = false;
+    
+    if (inClientInfo->mBundleID != NULL) {
+        CFStringGetCString(inClientInfo->mBundleID, client->bundleID, sizeof(client->bundleID), kCFStringEncodingUTF8);
+        client->isTishApp = IsTishApp(client->bundleID);
+    } else {
+        client->bundleID[0] = '\0';
+        client->isTishApp = false;
+    }
+}
+
 // Helper: Count clients doing I/O (excluding Tish)
 static UInt32 CountOtherClientsDoingIO(AudioObjectID deviceObjectID) {
     UInt32 count = 0;
@@ -874,38 +890,13 @@ static OSStatus	TishAudio_AddDeviceClient(AudioServerPlugInDriverRef inDriver, A
     SInt32 index = FindClientByID(inClientInfo->mClientID, inDeviceObjectID);
     if (index >= 0) {
         TishClientInfo* client = &gClients[index];
-        client->processID = inClientInfo->mProcessID;
-        client->isDoingIO = false;
-        
-        //  copy bundle ID if available
-        if (inClientInfo->mBundleID != NULL) {
-            CFStringGetCString(inClientInfo->mBundleID, client->bundleID, sizeof(client->bundleID), kCFStringEncodingUTF8);
-            client->isTishApp = IsTishApp(client->bundleID);
-        } else {
-            client->bundleID[0] = '\0';
-            client->isTishApp = false;
-        }
-        
+        PopulateClientInfo(client, inClientInfo, inDeviceObjectID);
         DebugMsg("TishAudio_AddClient: UPDATE id=%u dev=%u pid=%d bundle=%s isTish=%d", 
                  client->clientID, inDeviceObjectID, client->processID, client->bundleID, client->isTishApp);
     } else if (gClientCount < kMaxClients) {
         TishClientInfo* client = &gClients[gClientCount];
-        client->clientID = inClientInfo->mClientID;
-        client->deviceObjectID = inDeviceObjectID;
-        client->processID = inClientInfo->mProcessID;
-        client->isDoingIO = false;
-
-        
-        if (inClientInfo->mBundleID != NULL) {
-            CFStringGetCString(inClientInfo->mBundleID, client->bundleID, sizeof(client->bundleID), kCFStringEncodingUTF8);
-            client->isTishApp = IsTishApp(client->bundleID);
-        } else {
-            client->bundleID[0] = '\0';
-            client->isTishApp = false;
-        }
-        
+        PopulateClientInfo(client, inClientInfo, inDeviceObjectID);
         gClientCount++;
-        
         DebugMsg("TishAudio_AddClient: NEW id=%u dev=%u pid=%d bundle=%s isTish=%d total=%u", 
                  client->clientID, inDeviceObjectID, client->processID, client->bundleID, client->isTishApp, gClientCount);
     } else {
@@ -925,19 +916,7 @@ static OSStatus	TishAudio_AddDeviceClient(AudioServerPlugInDriverRef inDriver, A
             gClientCount--;
             
             TishClientInfo* client = &gClients[gClientCount];
-            client->clientID = inClientInfo->mClientID;
-            client->deviceObjectID = inDeviceObjectID;
-            client->processID = inClientInfo->mProcessID;
-            client->isDoingIO = false;
-            
-            if (inClientInfo->mBundleID != NULL) {
-                CFStringGetCString(inClientInfo->mBundleID, client->bundleID, sizeof(client->bundleID), kCFStringEncodingUTF8);
-                client->isTishApp = IsTishApp(client->bundleID);
-            } else {
-                client->bundleID[0] = '\0';
-                client->isTishApp = false;
-            }
-            
+            PopulateClientInfo(client, inClientInfo, inDeviceObjectID);
             gClientCount++;
             DebugMsg("TishAudio_AddClient: NEW (after evict) id=%u dev=%u bundle=%s", 
                      client->clientID, inDeviceObjectID, client->bundleID);
