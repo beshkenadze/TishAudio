@@ -83,3 +83,59 @@ tasks:
         else
           echo "TishAudio: NOT INSTALLED"
         fi
+
+  debug:build:
+    desc: Build the driver (Debug with logging)
+    deps: [generate]
+    cmds:
+      - xcodebuild -scheme {{.SCHEME}} -configuration Debug build
+
+  debug:install:
+    desc: Install debug driver (requires sudo)
+    deps: [debug:build]
+    cmds:
+      - |
+        DRIVER_PATH=$(find ~/Library/Developer/Xcode/DerivedData/TishAudio-*/Build/Products/Debug -name "TishAudio.driver" -type d | head -1)
+        if [ -z "$DRIVER_PATH" ]; then
+          echo "Debug driver not found. Run 'task debug:build' first."
+          exit 1
+        fi
+        echo "Installing DEBUG driver from: $DRIVER_PATH"
+        sudo cp -R "$DRIVER_PATH" {{.DRIVER_INSTALL_PATH}}/
+        sudo killall -9 coreaudiod
+        echo "TishAudio DEBUG driver installed"
+
+  debug:reinstall:
+    desc: Clean build and reinstall debug driver (requires sudo)
+    cmds:
+      - rm -rf ~/Library/Developer/Xcode/DerivedData/TishAudio-*
+      - tuist generate
+      - xcodebuild -scheme {{.SCHEME}} -configuration Debug clean build
+      - |
+        DRIVER_PATH=$(find ~/Library/Developer/Xcode/DerivedData/TishAudio-*/Build/Products/Debug -name "TishAudio.driver" -type d | head -1)
+        if [ -z "$DRIVER_PATH" ]; then
+          echo "Debug driver not found after build."
+          exit 1
+        fi
+        echo "Installing DEBUG driver from: $DRIVER_PATH"
+        sudo rm -rf {{.DRIVER_INSTALL_PATH}}/TishAudio.driver
+        sudo cp -R "$DRIVER_PATH" {{.DRIVER_INSTALL_PATH}}/
+        sudo killall -9 coreaudiod
+        echo "TishAudio DEBUG driver reinstalled"
+
+  debug:uninstall:
+    desc: Uninstall driver and install release version
+    deps: [build]
+    cmds:
+      - |
+        DRIVER_PATH=$(find ~/Library/Developer/Xcode/DerivedData/TishAudio-*/Build/Products/Release -name "TishAudio.driver" -type d | head -1)
+        echo "Replacing with RELEASE driver from: $DRIVER_PATH"
+        sudo rm -rf {{.DRIVER_INSTALL_PATH}}/TishAudio.driver
+        sudo cp -R "$DRIVER_PATH" {{.DRIVER_INSTALL_PATH}}/
+        sudo killall -9 coreaudiod
+        echo "TishAudio RELEASE driver installed (debug removed)"
+
+  logs:
+    desc: Stream driver logs (Ctrl+C to stop)
+    cmds:
+      - log stream --predicate 'eventMessage contains "TishAudio"' --level debug

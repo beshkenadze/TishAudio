@@ -199,11 +199,11 @@ struct ObjectInfo {
 #endif
 
 #ifndef kDevice_HasOutput
-#define                             kDevice_HasOutput                   false
+#define                             kDevice_HasOutput                   true
 #endif
 
 #ifndef kDevice2_HasInput
-#define                             kDevice2_HasInput                   false
+#define                             kDevice2_HasInput                   true
 #endif
 
 #ifndef kDevice2_HasOutput
@@ -279,12 +279,13 @@ static bool                         gPitch_Adjust_Enabled               = false;
 #pragma mark Client Tracking State
 //==================================================================================================
 
-// Maximum number of clients we track (should be plenty for any normal use)
-#define kMaxClients 64
+// Maximum number of clients we track
+#define kMaxClients 256
 
 // Client info structure - tracks a single connected client
 typedef struct {
     UInt32      clientID;       // Unique client ID from HAL
+    AudioObjectID deviceObjectID;
     pid_t       processID;      // Process ID of client app
     char        bundleID[256];  // Bundle ID (e.g., "us.zoom.xos")
     Boolean     isDoingIO;      // True if client is currently doing I/O
@@ -301,10 +302,9 @@ static Boolean IsTishApp(const char* bundleID) {
     return bundleID != NULL && strcmp(bundleID, kTishAppBundleID) == 0;
 }
 
-// Helper: Find client by ID, returns index or -1 if not found
-static SInt32 FindClientByID(UInt32 clientID) {
+static SInt32 FindClientByID(UInt32 clientID, AudioObjectID deviceObjectID) {
     for (UInt32 i = 0; i < gClientCount; i++) {
-        if (gClients[i].clientID == clientID) {
+        if (gClients[i].clientID == clientID && gClients[i].deviceObjectID == deviceObjectID) {
             return (SInt32)i;
         }
     }
@@ -312,10 +312,10 @@ static SInt32 FindClientByID(UInt32 clientID) {
 }
 
 // Helper: Count clients doing I/O (excluding Tish)
-static UInt32 CountOtherClientsDoingIO(void) {
+static UInt32 CountOtherClientsDoingIO(AudioObjectID deviceObjectID) {
     UInt32 count = 0;
     for (UInt32 i = 0; i < gClientCount; i++) {
-        if (gClients[i].isDoingIO && !gClients[i].isTishApp) {
+        if (gClients[i].deviceObjectID == deviceObjectID && gClients[i].isDoingIO && !gClients[i].isTishApp) {
             count++;
         }
     }
@@ -871,9 +871,9 @@ static OSStatus	TishAudio_AddDeviceClient(AudioServerPlugInDriverRef inDriver, A
     //  add client to tracking list
     pthread_mutex_lock(&gClientsMutex);
     
-    if (gClientCount < kMaxClients) {
-        TishClientInfo* client = &gClients[gClientCount];
-        client->clientID = inClientInfo->mClientID;
+    SInt32 index = FindClientByID(inClientInfo->mClientID, inDeviceObjectID);
+    if (index >= 0) {
+        TishClientInfo* client = &gClients[index];
         client->processID = inClientInfo->mProcessID;
         client->isDoingIO = false;
         
@@ -886,12 +886,64 @@ static OSStatus	TishAudio_AddDeviceClient(AudioServerPlugInDriverRef inDriver, A
             client->isTishApp = false;
         }
         
+        DebugMsg("TishAudio_AddClient: UPDATE id=%u dev=%u pid=%d bundle=%s isTish=%d", 
+                 client->clientID, inDeviceObjectID, client->processID, client->bundleID, client->isTishApp);
+    } else if (gClientCount < kMaxClients) {
+        TishClientInfo* client = &gClients[gClientCount];
+        client->clientID = inClientInfo->mClientID;
+        client->deviceObjectID = inDeviceObjectID;
+        client->processID = inClientInfo->mProcessID;
+        client->isDoingIO = false;
+
+        
+        if (inClientInfo->mBundleID != NULL) {
+            CFStringGetCString(inClientInfo->mBundleID, client->bundleID, sizeof(client->bundleID), kCFStringEncodingUTF8);
+            client->isTishApp = IsTishApp(client->bundleID);
+        } else {
+            client->bundleID[0] = '\0';
+            client->isTishApp = false;
+        }
+        
         gClientCount++;
         
-        DebugMsg("TishAudio_AddDeviceClient: added client %u (pid=%d, bundle=%s, isTish=%d)", 
-                 client->clientID, client->processID, client->bundleID, client->isTishApp);
+        DebugMsg("TishAudio_AddClient: NEW id=%u dev=%u pid=%d bundle=%s isTish=%d total=%u", 
+                 client->clientID, inDeviceObjectID, client->processID, client->bundleID, client->isTishApp, gClientCount);
     } else {
-        DebugMsg("TishAudio_AddDeviceClient: client list full, ignoring client %u", inClientInfo->mClientID);
+        SInt32 idleIdx = -1;
+        for (UInt32 i = 0; i < gClientCount; i++) {
+            if (!gClients[i].isDoingIO) {
+                idleIdx = (SInt32)i;
+                break;
+            }
+        }
+        
+        if (idleIdx >= 0) {
+            DebugMsg("TishAudio_AddClient: EVICT idle id=%u to make room", gClients[idleIdx].clientID);
+            for (UInt32 i = (UInt32)idleIdx; i < gClientCount - 1; i++) {
+                gClients[i] = gClients[i + 1];
+            }
+            gClientCount--;
+            
+            TishClientInfo* client = &gClients[gClientCount];
+            client->clientID = inClientInfo->mClientID;
+            client->deviceObjectID = inDeviceObjectID;
+            client->processID = inClientInfo->mProcessID;
+            client->isDoingIO = false;
+            
+            if (inClientInfo->mBundleID != NULL) {
+                CFStringGetCString(inClientInfo->mBundleID, client->bundleID, sizeof(client->bundleID), kCFStringEncodingUTF8);
+                client->isTishApp = IsTishApp(client->bundleID);
+            } else {
+                client->bundleID[0] = '\0';
+                client->isTishApp = false;
+            }
+            
+            gClientCount++;
+            DebugMsg("TishAudio_AddClient: NEW (after evict) id=%u dev=%u bundle=%s", 
+                     client->clientID, inDeviceObjectID, client->bundleID);
+        } else {
+            DebugMsg("TishAudio_AddClient: FULL (all active) id=%u ignored", inClientInfo->mClientID);
+        }
     }
     
     pthread_mutex_unlock(&gClientsMutex);
@@ -916,21 +968,21 @@ static OSStatus	TishAudio_RemoveDeviceClient(AudioServerPlugInDriverRef inDriver
     //  remove client from tracking list
     pthread_mutex_lock(&gClientsMutex);
     
-    SInt32 index = FindClientByID(inClientInfo->mClientID);
+    SInt32 index = FindClientByID(inClientInfo->mClientID, inDeviceObjectID);
     if (index >= 0) {
         TishClientInfo* client = &gClients[index];
-        
-        //  check if we need to notify (non-Tish client was doing IO)
         shouldNotify = client->isDoingIO && !client->isTishApp;
         
-        DebugMsg("TishAudio_RemoveDeviceClient: removing client %u (pid=%d, bundle=%s)", 
-                 client->clientID, client->processID, client->bundleID);
+        DebugMsg("TishAudio_RemoveClient: id=%u dev=%u pid=%d bundle=%s remaining=%u", 
+                 client->clientID, inDeviceObjectID, client->processID, client->bundleID, gClientCount - 1);
         
-        //  shift remaining clients down
         for (UInt32 i = (UInt32)index; i < gClientCount - 1; i++) {
             gClients[i] = gClients[i + 1];
         }
         gClientCount--;
+    } else {
+        DebugMsg("TishAudio_RemoveClient: NOT FOUND id=%u dev=%u (have %u clients)", 
+                 inClientInfo->mClientID, inDeviceObjectID, gClientCount);
     }
     
     pthread_mutex_unlock(&gClientsMutex);
@@ -2305,6 +2357,7 @@ static Boolean	TishAudio_HasDeviceProperty(AudioServerPlugInDriverRef inDriver, 
 		case kAudioDevicePropertyZeroTimeStampPeriod:
 		case kAudioDevicePropertyIcon:
 		case kAudioDevicePropertyStreams:
+		case kAudioObjectPropertyCustomPropertyInfoList:
 		case kTishDevicePropertyOtherClientsDoingIO:
 		case kTishDevicePropertyOtherClientsIOCount:
 			theAnswer = true;
@@ -2370,6 +2423,7 @@ static OSStatus	TishAudio_IsDevicePropertySettable(AudioServerPlugInDriverRef in
 		case kAudioDevicePropertyPreferredChannelLayout:
 		case kAudioDevicePropertyZeroTimeStampPeriod:
 		case kAudioDevicePropertyIcon:
+		case kAudioObjectPropertyCustomPropertyInfoList:
 			*outIsSettable = false;
 			break;
 		
@@ -2459,11 +2513,11 @@ static OSStatus	TishAudio_GetDevicePropertyDataSize(AudioServerPlugInDriverRef i
 			break;
 
 		case kTishDevicePropertyOtherClientsDoingIO:
-			*outDataSize = sizeof(UInt32);
+			*outDataSize = sizeof(CFNumberRef);
 			break;
 			
 		case kTishDevicePropertyOtherClientsIOCount:
-			*outDataSize = sizeof(UInt32);
+			*outDataSize = sizeof(CFNumberRef);
 			break;
 
 		case kAudioDevicePropertyDeviceCanBeDefaultDevice:
@@ -2485,6 +2539,10 @@ static OSStatus	TishAudio_GetDevicePropertyDataSize(AudioServerPlugInDriverRef i
 		case kAudioObjectPropertyControlList:
             *outDataSize = device_control_list_size(inAddress->mScope, inObjectID) * sizeof(AudioObjectID);
 			break;
+
+        case kAudioObjectPropertyCustomPropertyInfoList:
+            *outDataSize = 2 * sizeof(AudioServerPlugInCustomPropertyInfo);
+            break;
 
 		case kAudioDevicePropertySafetyOffset:
 			*outDataSize = sizeof(UInt32);
@@ -2755,22 +2813,26 @@ static OSStatus	TishAudio_GetDevicePropertyData(AudioServerPlugInDriverRef inDri
 
         case kTishDevicePropertyOtherClientsDoingIO:
             {
-                FailWithAction(inDataSize < sizeof(UInt32), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetDevicePropertyData: not enough space for kTishDevicePropertyOtherClientsDoingIO");
+                FailWithAction(inDataSize < sizeof(CFNumberRef), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetDevicePropertyData: not enough space for kTishDevicePropertyOtherClientsDoingIO");
                 pthread_mutex_lock(&gClientsMutex);
-                UInt32 otherCount = CountOtherClientsDoingIO();
+                UInt32 otherCount = CountOtherClientsDoingIO(inObjectID);
                 pthread_mutex_unlock(&gClientsMutex);
-                *((UInt32*)outData) = otherCount > 0 ? 1 : 0;
-                *outDataSize = sizeof(UInt32);
+                UInt32 hasOthers = otherCount > 0 ? 1 : 0;
+                CFNumberRef numberRef = CFNumberCreate(NULL, kCFNumberSInt32Type, &hasOthers);
+                *((CFNumberRef*)outData) = numberRef;
+                *outDataSize = sizeof(CFNumberRef);
             }
             break;
             
         case kTishDevicePropertyOtherClientsIOCount:
             {
-                FailWithAction(inDataSize < sizeof(UInt32), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetDevicePropertyData: not enough space for kTishDevicePropertyOtherClientsIOCount");
+                FailWithAction(inDataSize < sizeof(CFNumberRef), theAnswer = kAudioHardwareBadPropertySizeError, Done, "TishAudio_GetDevicePropertyData: not enough space for kTishDevicePropertyOtherClientsIOCount");
                 pthread_mutex_lock(&gClientsMutex);
-                *((UInt32*)outData) = CountOtherClientsDoingIO();
+                UInt32 count = CountOtherClientsDoingIO(inObjectID);
                 pthread_mutex_unlock(&gClientsMutex);
-                *outDataSize = sizeof(UInt32);
+                CFNumberRef numberRef = CFNumberCreate(NULL, kCFNumberSInt32Type, &count);
+                *((CFNumberRef*)outData) = numberRef;
+                *outDataSize = sizeof(CFNumberRef);
             }
             break;
 
@@ -2873,6 +2935,23 @@ static OSStatus	TishAudio_GetDevicePropertyData(AudioServerPlugInDriverRef inDri
 			//	report how much we wrote
 			*outDataSize = theNumberItemsToFetch * sizeof(AudioObjectID);
 			break;
+
+        case kAudioObjectPropertyCustomPropertyInfoList:
+            theNumberItemsToFetch = minimum(inDataSize / sizeof(AudioServerPlugInCustomPropertyInfo), 2);
+            if (theNumberItemsToFetch > 0)
+            {
+                ((AudioServerPlugInCustomPropertyInfo*)outData)[0].mSelector = kTishDevicePropertyOtherClientsDoingIO;
+                ((AudioServerPlugInCustomPropertyInfo*)outData)[0].mPropertyDataType = kAudioServerPlugInCustomPropertyDataTypeCFPropertyList;
+                ((AudioServerPlugInCustomPropertyInfo*)outData)[0].mQualifierDataType = kAudioServerPlugInCustomPropertyDataTypeNone;
+            }
+            if (theNumberItemsToFetch > 1)
+            {
+                ((AudioServerPlugInCustomPropertyInfo*)outData)[1].mSelector = kTishDevicePropertyOtherClientsIOCount;
+                ((AudioServerPlugInCustomPropertyInfo*)outData)[1].mPropertyDataType = kAudioServerPlugInCustomPropertyDataTypeCFPropertyList;
+                ((AudioServerPlugInCustomPropertyInfo*)outData)[1].mQualifierDataType = kAudioServerPlugInCustomPropertyDataTypeNone;
+            }
+            *outDataSize = theNumberItemsToFetch * sizeof(AudioServerPlugInCustomPropertyInfo);
+            break;
 
 		case kAudioDevicePropertySafetyOffset:
 			//	This property returns the how close to now the HAL can read and write. For
@@ -4484,7 +4563,7 @@ static OSStatus	TishAudio_StartIO(AudioServerPlugInDriverRef inDriver, AudioObje
 {
     //  This call tells the device that IO is starting for the given client.
     
-    DebugMsg("TishAudio_StartIO: client %u", inClientID);
+    DebugMsg("TishAudio_StartIO: client=%u dev=%u", inClientID, inDeviceObjectID);
     
     OSStatus theAnswer = 0;
     Boolean shouldNotify = false;
@@ -4498,16 +4577,20 @@ static OSStatus	TishAudio_StartIO(AudioServerPlugInDriverRef inDriver, AudioObje
 
     //  update client I/O state
     pthread_mutex_lock(&gClientsMutex);
-    previousOtherCount = CountOtherClientsDoingIO();
+    previousOtherCount = CountOtherClientsDoingIO(inDeviceObjectID);
     
-    SInt32 index = FindClientByID(inClientID);
+    SInt32 index = FindClientByID(inClientID, inDeviceObjectID);
     if (index >= 0) {
         gClients[index].isDoingIO = true;
-        DebugMsg("TishAudio_StartIO: client %u started IO (isTish=%d)", inClientID, gClients[index].isTishApp);
+        DebugMsg("TishAudio_StartIO: OK client=%u dev=%u bundle=%s isTish=%d", 
+                 inClientID, inDeviceObjectID, gClients[index].bundleID, gClients[index].isTishApp);
+    } else {
+        DebugMsg("TishAudio_StartIO: WARN client=%u dev=%u NOT FOUND in %u clients", inClientID, inDeviceObjectID, gClientCount);
     }
     
-    UInt32 newOtherCount = CountOtherClientsDoingIO();
+    UInt32 newOtherCount = CountOtherClientsDoingIO(inDeviceObjectID);
     shouldNotify = (previousOtherCount == 0 && newOtherCount > 0);
+    DebugMsg("TishAudio_StartIO: otherCount %u -> %u, notify=%d", previousOtherCount, newOtherCount, shouldNotify);
     pthread_mutex_unlock(&gClientsMutex);
 
     //  update device IO state
@@ -4582,7 +4665,7 @@ static OSStatus	TishAudio_StopIO(AudioServerPlugInDriverRef inDriver, AudioObjec
 {
     //  This call tells the device that the client has stopped IO.
     
-    DebugMsg("TishAudio_StopIO: client %u", inClientID);
+    DebugMsg("TishAudio_StopIO: client=%u dev=%u", inClientID, inDeviceObjectID);
     
     OSStatus theAnswer = 0;
     Boolean shouldNotify = false;
@@ -4596,15 +4679,15 @@ static OSStatus	TishAudio_StopIO(AudioServerPlugInDriverRef inDriver, AudioObjec
 
     //  update client I/O state
     pthread_mutex_lock(&gClientsMutex);
-    previousOtherCount = CountOtherClientsDoingIO();
+    previousOtherCount = CountOtherClientsDoingIO(inDeviceObjectID);
     
-    SInt32 index = FindClientByID(inClientID);
+    SInt32 index = FindClientByID(inClientID, inDeviceObjectID);
     if (index >= 0) {
         gClients[index].isDoingIO = false;
         DebugMsg("TishAudio_StopIO: client %u stopped IO (isTish=%d)", inClientID, gClients[index].isTishApp);
     }
     
-    UInt32 newOtherCount = CountOtherClientsDoingIO();
+    UInt32 newOtherCount = CountOtherClientsDoingIO(inDeviceObjectID);
     shouldNotify = (previousOtherCount > 0 && newOtherCount == 0);
     pthread_mutex_unlock(&gClientsMutex);
 
